@@ -55,16 +55,18 @@ class SoproTTSNode:
     OUTPUT_NODE = False
     
     def load_model(self):
-        """Lazy load the Sopro model using from_pretrained"""
+        """Lazy load the Sopro model from HuggingFace"""
         if self.model is None:
             try:
-                print("Loading Sopro TTS model...")
+                print("Loading Sopro TTS model from HuggingFace...")
                 
-                # Import Sopro
                 from sopro import SoproTTS
                 
-                # Use from_pretrained class method (common pattern for TTS models)
-                self.model = SoproTTS.from_pretrained(device=self.device)
+                # Load from HuggingFace with the official repo ID
+                self.model = SoproTTS.from_pretrained(
+                    "samuel-vitorino/sopro",
+                    device=self.device
+                )
                 
                 print("Sopro TTS model loaded successfully!")
             except Exception as e:
