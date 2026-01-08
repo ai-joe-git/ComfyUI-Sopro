@@ -59,27 +59,43 @@ class SoproTTSNode:
         """Lazy load the Sopro model using hub utilities"""
         if self.model is None:
             try:
-                from sopro import hub, SoproTTS, model as sopro_model, tokenizer as sopro_tokenizer, codec as sopro_codec
-                from sopro.config import SoproTTSConfig
+                from sopro import hub
                 
                 print("Downloading Sopro TTS model from HuggingFace...")
-                # Download the model from HuggingFace - CORRECT REPO!
+                # Download the model from HuggingFace
                 model_path = hub.snapshot_download(
-                    repo_id="samuel-vitorino/sopro",  # FIXED: correct repo ID
+                    repo_id="samuel-vitorino/sopro",
                     repo_type="model"
                 )
                 
                 print(f"Model downloaded to: {model_path}")
-                print("Loading model components...")
+                print("Loading model using hub utilities...")
                 
-                # Load config
-                cfg_path = os.path.join(model_path, "config.json")
-                with open(cfg_path, 'r') as f:
+                # Use hub's built-in loaders which handle the config correctly
+                try:
+                    # Try loading config with hub utility
+                    cfg = hub.load_cfg_from_safetensors(os.path.join(model_path, "model.safetensors"))
+                except Exception as e:
+                    print(f"Using hub loader failed, trying manual load: {e}")
+                    # Fallback: manual loading with filtered config
+                    from sopro.config import SoproTTSConfig
                     import json
-                    cfg_dict = json.load(f)
-                cfg = SoproTTSConfig(**cfg_dict)
+                    import inspect
+                    
+                    cfg_path = os.path.join(model_path, "config.json")
+                    with open(cfg_path, 'r') as f:
+                        cfg_dict = json.load(f)
+                    
+                    # Get valid SoproTTSConfig parameters
+                    valid_params = inspect.signature(SoproTTSConfig.__init__).parameters.keys()
+                    filtered_cfg = {k: v for k, v in cfg_dict.items() if k in valid_params}
+                    
+                    print(f"Filtered config keys: {filtered_cfg.keys()}")
+                    cfg = SoproTTSConfig(**filtered_cfg)
                 
-                # Load model, tokenizer, and codec
+                # Load model components
+                from sopro import model as sopro_model, tokenizer as sopro_tokenizer, codec as sopro_codec, SoproTTS
+                
                 model = sopro_model.load_model(model_path, device=self.device)
                 tokenizer_obj = sopro_tokenizer.load_tokenizer(model_path)
                 codec_obj = sopro_codec.load_codec(model_path, device=self.device)
@@ -95,6 +111,8 @@ class SoproTTSNode:
                 
                 print("Sopro TTS model loaded successfully!")
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 raise RuntimeError(
                     f"Failed to load Sopro model: {str(e)}\n"
                     "Make sure Sopro is installed: pip install git+https://github.com/samuel-vitorino/sopro.git"
@@ -190,6 +208,8 @@ class SoproTTSNode:
             },)
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             raise RuntimeError(f"Error generating speech: {str(e)}")
 
 
@@ -201,7 +221,7 @@ class SoproLoadReferenceAudio:
         input_dir = folder_paths.get_input_directory()
         files = []
         if os.path.exists(input_dir):
-            files = [f for f in os.listdir(input_dir)  # FIXED: was 'for m in'
+            files = [f for f in os.listdir(input_dir)
                     if f.endswith(('.wav', '.mp3', '.flac', '.ogg', '.m4a'))]
         
         return {
