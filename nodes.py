@@ -5,6 +5,7 @@ import soundfile as sf
 import numpy as np
 import os
 import folder_paths
+import inspect
 
 class SoproTTSNode:
     """
@@ -135,33 +136,37 @@ class SoproTTSNode:
                 
                 ref_audio_np = ref_waveform.squeeze()
             
-            # Try different method names (common in TTS models)
-            if hasattr(model, 'generate'):
-                # Most common method name
-                audio_output = model.generate(
-                    text=text,
-                    reference_audio=ref_audio_np,
-                    speed=speed,
-                    temperature=temperature
-                )
-            elif hasattr(model, '__call__'):
-                # Model might be callable directly
-                audio_output = model(
-                    text=text,
-                    reference_audio=ref_audio_np,
-                    speed=speed,
-                    temperature=temperature
-                )
-            elif hasattr(model, 'synthesize'):
-                # Alternative common method
-                audio_output = model.synthesize(
-                    text=text,
-                    reference_audio=ref_audio_np,
-                    speed=speed,
-                    temperature=temperature
-                )
-            else:
-                raise AttributeError(f"Model has no recognized inference method. Available methods: {dir(model)}")
+            # Get the synthesize method signature to understand parameters
+            sig = inspect.signature(model.synthesize)
+            params = list(sig.parameters.keys())
+            print(f"Sopro synthesize parameters: {params}")
+            
+            # Build kwargs based on available parameters
+            kwargs = {"text": text}
+            
+            # Try common parameter names for reference audio
+            if ref_audio_np is not None:
+                if "prompt_audio" in params:
+                    kwargs["prompt_audio"] = ref_audio_np
+                elif "reference" in params:
+                    kwargs["reference"] = ref_audio_np
+                elif "prompt" in params:
+                    kwargs["prompt"] = ref_audio_np
+                elif "audio_prompt" in params:
+                    kwargs["audio_prompt"] = ref_audio_np
+            
+            # Add speed if supported
+            if "speed" in params:
+                kwargs["speed"] = speed
+            elif "duration_factor" in params:
+                kwargs["duration_factor"] = speed
+            
+            # Add temperature if supported
+            if "temperature" in params:
+                kwargs["temperature"] = temperature
+            
+            # Generate speech
+            audio_output = model.synthesize(**kwargs)
             
             # Convert to torch tensor if needed
             if isinstance(audio_output, np.ndarray):
