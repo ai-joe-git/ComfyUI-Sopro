@@ -56,57 +56,20 @@ class SoproTTSNode:
     OUTPUT_NODE = False
     
     def load_model(self):
-        """Lazy load the Sopro model using hub utilities"""
+        """Lazy load the Sopro model"""
         if self.model is None:
             try:
-                from sopro import hub
+                print("Loading Sopro TTS model...")
                 
-                print("Downloading Sopro TTS model from HuggingFace...")
-                # Download the model from HuggingFace
-                model_path = hub.snapshot_download(
-                    repo_id="samuel-vitorino/sopro",
-                    repo_type="model"
-                )
+                # Import and instantiate SoproTTS directly
+                from sopro import SoproTTS
                 
-                print(f"Model downloaded to: {model_path}")
-                print("Loading model using hub utilities...")
-                
-                # Use hub's built-in loaders which handle the config correctly
-                try:
-                    # Try loading config with hub utility
-                    cfg = hub.load_cfg_from_safetensors(os.path.join(model_path, "model.safetensors"))
-                except Exception as e:
-                    print(f"Using hub loader failed, trying manual load: {e}")
-                    # Fallback: manual loading with filtered config
-                    from sopro.config import SoproTTSConfig
-                    import json
-                    import inspect
-                    
-                    cfg_path = os.path.join(model_path, "config.json")
-                    with open(cfg_path, 'r') as f:
-                        cfg_dict = json.load(f)
-                    
-                    # Get valid SoproTTSConfig parameters
-                    valid_params = inspect.signature(SoproTTSConfig.__init__).parameters.keys()
-                    filtered_cfg = {k: v for k, v in cfg_dict.items() if k in valid_params}
-                    
-                    print(f"Filtered config keys: {filtered_cfg.keys()}")
-                    cfg = SoproTTSConfig(**filtered_cfg)
-                
-                # Load model components
-                from sopro import model as sopro_model, tokenizer as sopro_tokenizer, codec as sopro_codec, SoproTTS
-                
-                model = sopro_model.load_model(model_path, device=self.device)
-                tokenizer_obj = sopro_tokenizer.load_tokenizer(model_path)
-                codec_obj = sopro_codec.load_codec(model_path, device=self.device)
-                
-                # Create SoproTTS instance
+                # Initialize model - it will download if needed
                 self.model = SoproTTS(
-                    model=model,
-                    cfg=cfg,
-                    tokenizer=tokenizer_obj,
-                    codec=codec_obj,
-                    device=self.device
+                    backend='eager',  # Use eager mode for CPU
+                    device=self.device,
+                    cache_size_mb=10,
+                    decoder_batch_size=1
                 )
                 
                 print("Sopro TTS model loaded successfully!")
@@ -164,6 +127,7 @@ class SoproTTSNode:
                 if ref_waveform.shape[0] > 1:
                     ref_waveform = ref_waveform.mean(axis=0, keepdims=True)
                 
+                # Resample to 24kHz if needed (Sopro's expected rate)
                 if ref_sample_rate != 24000:
                     ref_waveform_tensor = torch.from_numpy(ref_waveform).float()
                     ref_waveform_tensor = torchaudio.functional.resample(
@@ -171,26 +135,24 @@ class SoproTTSNode:
                     )
                     ref_waveform = ref_waveform_tensor.numpy()
                 
-                # Generate with voice cloning
-                audio = model(
+                # Generate with voice cloning using infer method
+                audio_tensor = model.infer(
                     text=text,
-                    reference_audio=ref_waveform.squeeze(),
+                    reference_audio=ref_waveform.squeeze() if ref_waveform is not None else None,
                     speed=speed,
                     temperature=temperature
                 )
             else:
                 # Standard TTS mode
-                audio = model(
+                audio_tensor = model.infer(
                     text=text,
                     speed=speed,
                     temperature=temperature
                 )
             
-            # Convert to torch tensor
-            if isinstance(audio, np.ndarray):
-                audio_tensor = torch.from_numpy(audio).float()
-            else:
-                audio_tensor = audio.float()
+            # Convert to torch tensor if needed
+            if isinstance(audio_tensor, np.ndarray):
+                audio_tensor = torch.from_numpy(audio_tensor).float()
             
             # Ensure correct shape: (batch, channels, samples)
             if audio_tensor.dim() == 1:
