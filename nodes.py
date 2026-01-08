@@ -61,16 +61,11 @@ class SoproTTSNode:
             try:
                 print("Loading Sopro TTS model...")
                 
-                # Import and instantiate SoproTTS directly
+                # Import and instantiate SoproTTS with minimal args
                 from sopro import SoproTTS
                 
-                # Initialize model - it will download if needed
-                self.model = SoproTTS(
-                    backend='eager',  # Use eager mode for CPU
-                    device=self.device,
-                    cache_size_mb=10,
-                    decoder_batch_size=1
-                )
+                # Initialize model with default settings - it will auto-download
+                self.model = SoproTTS(device=self.device)
                 
                 print("Sopro TTS model loaded successfully!")
             except Exception as e:
@@ -115,9 +110,9 @@ class SoproTTSNode:
             raise ValueError("Text input cannot be empty")
         
         try:
-            # Prepare generation arguments
+            # Prepare reference audio if provided
+            ref_audio_np = None
             if reference_audio is not None:
-                # Voice cloning mode
                 ref_waveform = reference_audio['waveform']
                 ref_sample_rate = reference_audio['sample_rate']
                 
@@ -127,7 +122,7 @@ class SoproTTSNode:
                 if ref_waveform.shape[0] > 1:
                     ref_waveform = ref_waveform.mean(axis=0, keepdims=True)
                 
-                # Resample to 24kHz if needed (Sopro's expected rate)
+                # Resample to 24kHz if needed
                 if ref_sample_rate != 24000:
                     ref_waveform_tensor = torch.from_numpy(ref_waveform).float()
                     ref_waveform_tensor = torchaudio.functional.resample(
@@ -135,24 +130,21 @@ class SoproTTSNode:
                     )
                     ref_waveform = ref_waveform_tensor.numpy()
                 
-                # Generate with voice cloning using infer method
-                audio_tensor = model.infer(
-                    text=text,
-                    reference_audio=ref_waveform.squeeze() if ref_waveform is not None else None,
-                    speed=speed,
-                    temperature=temperature
-                )
-            else:
-                # Standard TTS mode
-                audio_tensor = model.infer(
-                    text=text,
-                    speed=speed,
-                    temperature=temperature
-                )
+                ref_audio_np = ref_waveform.squeeze()
+            
+            # Generate speech
+            audio_output = model.infer(
+                text=text,
+                reference_audio=ref_audio_np,
+                speed=speed,
+                temperature=temperature
+            )
             
             # Convert to torch tensor if needed
-            if isinstance(audio_tensor, np.ndarray):
-                audio_tensor = torch.from_numpy(audio_tensor).float()
+            if isinstance(audio_output, np.ndarray):
+                audio_tensor = torch.from_numpy(audio_output).float()
+            else:
+                audio_tensor = audio_output.float()
             
             # Ensure correct shape: (batch, channels, samples)
             if audio_tensor.dim() == 1:
