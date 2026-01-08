@@ -1,4 +1,4 @@
-# nodes.py - ENHANCED VERSION
+# nodes.py - FULL VERSION WITH VOLUME CONTROL
 import torch
 import torchaudio
 import soundfile as sf
@@ -11,7 +11,7 @@ import tempfile
 class SoproTTSNode:
     """
     Sopro TTS Node - Lightweight CPU-based Text-to-Speech with zero-shot voice cloning
-    Enhanced with full parameter control
+    Enhanced with full parameter control and volume normalization
     """
     
     def __init__(self):
@@ -127,10 +127,33 @@ class SoproTTSNode:
                     "display": "slider",
                     "tooltip": "Playback speed adjustment"
                 }),
+                
+                # Volume Controls
+                "normalize_volume": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Normalize audio to target peak level"
+                }),
+                "target_peak_db": ("FLOAT", {
+                    "default": -3.0,
+                    "min": -20.0,
+                    "max": 0.0,
+                    "step": 0.5,
+                    "display": "slider",
+                    "tooltip": "Target peak level in dB (0 = maximum, -3 = safer)"
+                }),
+                "gain": ("FLOAT", {
+                    "default": 1.0,
+                    "min": 0.1,
+                    "max": 5.0,
+                    "step": 0.1,
+                    "display": "slider",
+                    "tooltip": "Additional gain multiplier"
+                }),
+                
                 "seed": ("INT", {
                     "default": 0,
                     "min": 0,
-                    "max": 2147483647,
+                    "max": 0xffffffff,
                     "tooltip": "Random seed for reproducibility (0 = random)"
                 }),
             }
@@ -195,12 +218,13 @@ class SoproTTSNode:
                        ref_seconds=3.0, use_prefix=True, prefix_sec_fixed=2.0,
                        anti_loop=True, use_stop_head=True, 
                        stop_patience=10, stop_threshold=0.5,
-                       speed=1.0, seed=0):
+                       speed=1.0, 
+                       normalize_volume=True, target_peak_db=-3.0, gain=1.0,
+                       seed=0):
         """Generate speech from text using Sopro TTS with full control"""
         
         # Set seed for reproducibility
         if seed > 0:
-            seed = min(seed, 2147483647)
             torch.manual_seed(seed)
             np.random.seed(seed)
             print(f"🎲 Seed set to: {seed}")
@@ -316,11 +340,32 @@ class SoproTTSNode:
                 new_duration = audio_tensor.shape[-1] / 24000
                 print(f"  ↳ New duration: {new_duration:.2f}s")
             
-            # Normalize audio to [-1, 1] if needed
-            max_val = audio_tensor.abs().max()
-            if max_val > 1.0:
-                audio_tensor = audio_tensor / max_val
-                print(f"🔊 Normalized audio (peak was {max_val:.3f})")
+            # Apply gain multiplier first
+            if gain != 1.0:
+                audio_tensor = audio_tensor * gain
+                print(f"🔊 Applied gain: {gain}x")
+            
+            # Normalize audio intelligently
+            if normalize_volume:
+                # Calculate target peak in linear scale
+                target_peak = 10 ** (target_peak_db / 20.0)  # Convert dB to linear
+                
+                # Find current peak
+                current_peak = audio_tensor.abs().max()
+                
+                if current_peak > 0:
+                    # Calculate scaling factor
+                    scale_factor = target_peak / current_peak
+                    audio_tensor = audio_tensor * scale_factor
+                    
+                    final_peak_db = 20 * torch.log10(audio_tensor.abs().max())
+                    print(f"🔊 Normalized: {current_peak:.3f} → {audio_tensor.abs().max().item():.3f} ({final_peak_db.item():.1f} dB)")
+            else:
+                # Simple clipping prevention
+                max_val = audio_tensor.abs().max()
+                if max_val > 1.0:
+                    audio_tensor = audio_tensor / max_val
+                    print(f"🔊 Clipping prevented (peak was {max_val:.3f})")
             
             return ({
                 "waveform": audio_tensor,
@@ -357,27 +402,30 @@ class SoproTTSPresets:
                     "consistent",
                     "expressive",
                     "natural",
+                    "loud_clear",
                 ], {
                     "default": "balanced"
                 }),
             }
         }
     
-    RETURN_TYPES = ("FLOAT", "FLOAT", "FLOAT", "INT", "FLOAT", "BOOLEAN", "FLOAT")
-    RETURN_NAMES = ("temperature", "style_strength", "top_p", "max_frames", "ref_seconds", "anti_loop", "speed")
+    RETURN_TYPES = ("FLOAT", "FLOAT", "FLOAT", "INT", "FLOAT", "BOOLEAN", "FLOAT", "FLOAT", "FLOAT")
+    RETURN_NAMES = ("temperature", "style_strength", "top_p", "max_frames", "ref_seconds", "anti_loop", "speed", "target_peak_db", "gain")
     FUNCTION = "get_preset"
     CATEGORY = "audio/generation/presets"
     
     def get_preset(self, preset):
         """Return preset values"""
         presets = {
-            "balanced": (0.7, 1.0, 0.95, 512, 3.0, True, 1.0),
-            "high_quality": (0.5, 1.2, 0.9, 1024, 5.0, True, 0.95),
-            "fast": (0.8, 0.8, 0.98, 256, 2.0, True, 1.1),
-            "creative": (1.2, 0.8, 0.98, 768, 3.0, False, 1.0),
-            "consistent": (0.3, 1.5, 0.85, 512, 4.0, True, 1.0),
-            "expressive": (1.0, 1.3, 0.95, 640, 4.0, True, 0.98),
-            "natural": (0.6, 1.1, 0.92, 512, 3.5, True, 0.97),
+            # temp, style, top_p, frames, ref_sec, anti_loop, speed, peak_db, gain
+            "balanced":      (0.7,  1.0,  0.95, 512,  3.0, True, 1.0,  -3.0, 1.5),
+            "high_quality":  (0.5,  1.2,  0.9,  1024, 5.0, True, 0.95, -3.0, 1.8),
+            "fast":          (0.8,  0.8,  0.98, 256,  2.0, True, 1.1,  -3.0, 1.5),
+            "creative":      (1.2,  0.8,  0.98, 768,  3.0, False,1.0,  -3.0, 1.5),
+            "consistent":    (0.3,  1.5,  0.85, 512,  4.0, True, 1.0,  -3.0, 1.5),
+            "expressive":    (1.0,  1.3,  0.95, 640,  4.0, True, 0.98, -3.0, 1.6),
+            "natural":       (0.6,  1.1,  0.92, 512,  3.5, True, 0.97, -3.0, 1.5),
+            "loud_clear":    (0.7,  1.0,  0.95, 512,  3.0, True, 1.0,  -1.0, 2.5),
         }
         
         values = presets.get(preset, presets["balanced"])
