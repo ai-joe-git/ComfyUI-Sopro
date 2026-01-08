@@ -56,16 +56,40 @@ class SoproTTSNode:
     OUTPUT_NODE = False
     
     def load_model(self):
-        """Lazy load the Sopro model using hub.from_pretrained"""
+        """Lazy load the Sopro model"""
         if self.model is None:
             try:
                 from sopro import hub
-                print("Loading Sopro TTS model from pretrained...")
-                # Use hub.from_pretrained to load the model properly
-                self.model = hub.from_pretrained(device=self.device)
+                print("Loading Sopro TTS model...")
+                print(f"Available hub methods: {[m for m in dir(hub) if not m.startswith('_')]}")
+                
+                # Try different possible loading methods
+                if hasattr(hub, 'load'):
+                    self.model = hub.load(device=self.device)
+                elif hasattr(hub, 'load_model'):
+                    self.model = hub.load_model(device=self.device)
+                elif hasattr(hub, 'get_model'):
+                    self.model = hub.get_model(device=self.device)
+                else:
+                    # Fallback: try calling hub directly or using first available function
+                    available_funcs = [m for m in dir(hub) if callable(getattr(hub, m)) and not m.startswith('_')]
+                    if available_funcs:
+                        print(f"Trying first available function: {available_funcs[0]}")
+                        load_func = getattr(hub, available_funcs[0])
+                        try:
+                            self.model = load_func(device=self.device)
+                        except TypeError:
+                            # Try without device argument
+                            self.model = load_func()
+                    else:
+                        raise RuntimeError(f"No loading function found in sopro.hub. Available: {dir(hub)}")
+                
                 print("Sopro TTS model loaded successfully!")
             except Exception as e:
-                raise RuntimeError(f"Failed to load Sopro model: {str(e)}\nMake sure Sopro is installed: pip install git+https://github.com/samuel-vitorino/sopro.git")
+                raise RuntimeError(
+                    f"Failed to load Sopro model: {str(e)}\n"
+                    "Make sure Sopro is installed: pip install git+https://github.com/samuel-vitorino/sopro.git"
+                )
         return self.model
     
     def preprocess_text(self, text):
@@ -168,7 +192,7 @@ class SoproLoadReferenceAudio:
         input_dir = folder_paths.get_input_directory()
         files = []
         if os.path.exists(input_dir):
-            files = [f for f in os.listdir(input_dir) 
+            files = [f for m in os.listdir(input_dir) 
                     if f.endswith(('.wav', '.mp3', '.flac', '.ogg', '.m4a'))]
         
         return {
