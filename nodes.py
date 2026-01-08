@@ -6,6 +6,7 @@ import numpy as np
 import os
 import folder_paths
 import inspect
+import tempfile
 
 class SoproTTSNode:
     """
@@ -112,15 +113,29 @@ class SoproTTSNode:
         if not text:
             raise ValueError("Text input cannot be empty")
         
+        # Temporary file for reference audio
+        temp_audio_path = None
+        
         try:
-            # Prepare reference audio if provided
-            ref_audio_np = None
+            # Get the synthesize method signature to understand parameters
+            sig = inspect.signature(model.synthesize)
+            params = list(sig.parameters.keys())
+            print(f"Sopro synthesize parameters: {params}")
+            
+            # Build kwargs based on available parameters
+            kwargs = {"text": text}
+            
+            # Handle reference audio - Sopro needs a FILE PATH, not raw audio
             if reference_audio is not None:
                 ref_waveform = reference_audio['waveform']
                 ref_sample_rate = reference_audio['sample_rate']
                 
                 if isinstance(ref_waveform, torch.Tensor):
-                    ref_waveform = ref_waveform[0].cpu().numpy()
+                    ref_waveform = ref_waveform.cpu().numpy()
+                
+                # Remove batch dimension if present
+                if ref_waveform.ndim == 3:
+                    ref_waveform = ref_waveform[0]
                 
                 # Convert stereo to mono
                 if ref_waveform.shape[0] > 1:
@@ -133,37 +148,28 @@ class SoproTTSNode:
                         ref_waveform_tensor, ref_sample_rate, 24000
                     )
                     ref_waveform = ref_waveform_tensor.numpy()
+                    ref_sample_rate = 24000
                 
-                ref_audio_np = ref_waveform.squeeze()
-            
-            # Get the synthesize method signature to understand parameters
-            sig = inspect.signature(model.synthesize)
-            params = list(sig.parameters.keys())
-            print(f"Sopro synthesize parameters: {params}")
-            
-            # Build kwargs based on available parameters
-            kwargs = {"text": text}
-            
-            # Try common parameter names for reference audio
-            if ref_audio_np is not None:
-                if "prompt_audio" in params:
-                    kwargs["prompt_audio"] = ref_audio_np
-                elif "reference" in params:
-                    kwargs["reference"] = ref_audio_np
-                elif "prompt" in params:
-                    kwargs["prompt"] = ref_audio_np
-                elif "audio_prompt" in params:
-                    kwargs["audio_prompt"] = ref_audio_np
-            
-            # Add speed if supported
-            if "speed" in params:
-                kwargs["speed"] = speed
-            elif "duration_factor" in params:
-                kwargs["duration_factor"] = speed
+                # Transpose to (samples, channels) for soundfile
+                audio_to_save = ref_waveform.T
+                
+                # Create temporary WAV file
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                    temp_audio_path = tmp_file.name
+                    sf.write(temp_audio_path, audio_to_save, ref_sample_rate)
+                    print(f"Saved reference audio to: {temp_audio_path}")
+                
+                # Use ref_audio_path parameter
+                kwargs["ref_audio_path"] = temp_audio_path
             
             # Add temperature if supported
             if "temperature" in params:
                 kwargs["temperature"] = temperature
+            
+            # Speed isn't directly supported in Sopro, but we can adjust post-generation
+            # by resampling if needed
+            
+            print(f"Calling model.synthesize with: {list(kwargs.keys())}")
             
             # Generate speech
             audio_output = model.synthesize(**kwargs)
@@ -180,6 +186,17 @@ class SoproTTSNode:
             elif audio_tensor.dim() == 2:
                 audio_tensor = audio_tensor.unsqueeze(0)
             
+            # Apply speed adjustment if needed (by resampling)
+            if speed != 1.0:
+                # Speed up/down by resampling
+                original_sample_rate = 24000
+                target_sample_rate = int(original_sample_rate * speed)
+                audio_tensor = torchaudio.functional.resample(
+                    audio_tensor,
+                    orig_freq=target_sample_rate,
+                    new_freq=original_sample_rate
+                )
+            
             # Normalize audio to [-1, 1] if needed
             max_val = audio_tensor.abs().max()
             if max_val > 1.0:
@@ -194,6 +211,15 @@ class SoproTTSNode:
             import traceback
             traceback.print_exc()
             raise RuntimeError(f"Error generating speech: {str(e)}")
+        
+        finally:
+            # Clean up temporary file
+            if temp_audio_path and os.path.exists(temp_audio_path):
+                try:
+                    os.unlink(temp_audio_path)
+                    print(f"Cleaned up temporary file: {temp_audio_path}")
+                except Exception as e:
+                    print(f"Warning: Could not delete temporary file {temp_audio_path}: {e}")
 
 
 class SoproLoadReferenceAudio:
