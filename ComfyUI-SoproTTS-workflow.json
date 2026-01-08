@@ -2,8 +2,45 @@
   "id": "bbd47992-fee0-4f95-9e03-b6e44ca7c5c2",
   "revision": 0,
   "last_node_id": 17,
-  "last_link_id": 25,
+  "last_link_id": 27,
   "nodes": [
+    {
+      "id": 13,
+      "type": "SoproSaveAudio",
+      "pos": [
+        955.974665297856,
+        3892.091734592831
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 17
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "aux_id": "ai-joe-git/ComfyUI-Sopro",
+        "ver": "28e8db71f37ddbf2f586cc3cff5cc2381fe206f8",
+        "Node name for S&R": "SoproSaveAudio",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "sopro_audio",
+        "wav"
+      ]
+    },
     {
       "id": 15,
       "type": "SoproTTSNode",
@@ -12,8 +49,8 @@
         3891.431540704353
       ],
       "size": [
-        400,
-        448
+        426.6679421586589,
+        612.8564378084529
       ],
       "flags": {},
       "order": 2,
@@ -86,6 +123,24 @@
             "name": "speed"
           },
           "link": 25
+        },
+        {
+          "name": "target_peak_db",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "target_peak_db"
+          },
+          "link": 27
+        },
+        {
+          "name": "gain",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "gain"
+          },
+          "link": 26
         }
       ],
       "outputs": [
@@ -109,7 +164,7 @@
         }
       },
       "widgets_values": [
-        "Hello, this is a test of the Sopro text to speech system.",
+        "The old mansion stood silent under the moonlight. Sarah hesitated at the door, her heart pounding. 'Hello?' she called out, but only echoes answered. Suddenly, a floorboard creaked upstairs. She wasn't alone after all. Her curiosity fought with her fear - should she investigate, or run?",
         1,
         1,
         0.77,
@@ -123,7 +178,10 @@
         10,
         0.5,
         1,
-        1695900962,
+        527186376,
+        "randomize",
+        1,
+        2059071584,
         "randomize"
       ]
     },
@@ -131,12 +189,12 @@
       "id": 17,
       "type": "SoproTTSPresets",
       "pos": [
-        155.52001096747554,
-        4025.5143013444304
+        197.34022893087558,
+        4068.5466947135064
       ],
       "size": [
         270,
-        178
+        218
       ],
       "flags": {},
       "order": 0,
@@ -191,102 +249,42 @@
           "links": [
             25
           ]
+        },
+        {
+          "name": "target_peak_db",
+          "type": "FLOAT",
+          "links": [
+            27
+          ]
+        },
+        {
+          "name": "gain",
+          "type": "FLOAT",
+          "links": [
+            26
+          ]
         }
       ],
       "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
         "aux_id": "ai-joe-git/ComfyUI-Sopro",
         "ver": "5444861dc44c2b1d42e6e8c73aab97d82c156654",
-        "Node name for S&R": "SoproTTSPresets"
+        "Node name for S&R": "SoproTTSPresets",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
       },
       "widgets_values": [
         "high_quality"
       ]
     },
     {
-      "id": 14,
-      "type": "SoproLoadReferenceAudio",
-      "pos": [
-        151.42586182614542,
-        3875.566778669565
-      ],
-      "size": [
-        289.80234375,
-        58
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "reference_audio",
-          "type": "AUDIO",
-          "links": [
-            16
-          ]
-        }
-      ],
-      "properties": {
-        "aux_id": "ai-joe-git/ComfyUI-Sopro",
-        "ver": "28e8db71f37ddbf2f586cc3cff5cc2381fe206f8",
-        "Node name for S&R": "SoproLoadReferenceAudio",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "My_Voice.mp3"
-      ]
-    },
-    {
-      "id": 13,
-      "type": "SoproSaveAudio",
-      "pos": [
-        975.3695550224613,
-        3887.849120672968
-      ],
-      "size": [
-        270,
-        82
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "link": 17
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "aux_id": "ai-joe-git/ComfyUI-Sopro",
-        "ver": "28e8db71f37ddbf2f586cc3cff5cc2381fe206f8",
-        "Node name for S&R": "SoproSaveAudio",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "sopro_audio",
-        "wav"
-      ]
-    },
-    {
       "id": 16,
       "type": "SaveAudioMP3",
       "pos": [
-        976.3930132423521,
-        4060.3143757746525
+        954.5737727063957,
+        4030.6159742933555
       ],
       "size": [
         270,
@@ -316,6 +314,44 @@
       "widgets_values": [
         "audio/ComfyUI",
         "V0"
+      ]
+    },
+    {
+      "id": 14,
+      "type": "SoproLoadReferenceAudio",
+      "pos": [
+        185.3669188442052,
+        3895.5677456927833
+      ],
+      "size": [
+        289.80234375,
+        58
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "reference_audio",
+          "type": "AUDIO",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "ai-joe-git/ComfyUI-Sopro",
+        "ver": "28e8db71f37ddbf2f586cc3cff5cc2381fe206f8",
+        "Node name for S&R": "SoproLoadReferenceAudio",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "DEXTER CAT My ancestors were worshipped as gods.wav"
       ]
     }
   ],
@@ -399,6 +435,22 @@
       15,
       7,
       "FLOAT"
+    ],
+    [
+      26,
+      17,
+      8,
+      15,
+      9,
+      "FLOAT"
+    ],
+    [
+      27,
+      17,
+      7,
+      15,
+      8,
+      "FLOAT"
     ]
   ],
   "groups": [],
@@ -408,10 +460,10 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.7332977503792134,
+      "scale": 0.7901902013815728,
       "offset": [
-        59.488624770600744,
-        -3598.58850357056
+        -4.435499141350839,
+        -3734.3722261895346
       ]
     },
     "frontendVersion": "1.37.5",
