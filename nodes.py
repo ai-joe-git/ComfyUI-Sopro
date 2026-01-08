@@ -56,33 +56,39 @@ class SoproTTSNode:
     OUTPUT_NODE = False
     
     def load_model(self):
-        """Lazy load the Sopro model"""
+        """Lazy load the Sopro model using hub utilities"""
         if self.model is None:
             try:
-                from sopro import hub
-                print("Loading Sopro TTS model...")
-                print(f"Available hub methods: {[m for m in dir(hub) if not m.startswith('_')]}")
+                from sopro import hub, SoproTTS, model as sopro_model, tokenizer as sopro_tokenizer, codec as sopro_codec
+                from sopro.config import SoproTTSConfig
                 
-                # Try different possible loading methods
-                if hasattr(hub, 'load'):
-                    self.model = hub.load(device=self.device)
-                elif hasattr(hub, 'load_model'):
-                    self.model = hub.load_model(device=self.device)
-                elif hasattr(hub, 'get_model'):
-                    self.model = hub.get_model(device=self.device)
-                else:
-                    # Fallback: try calling hub directly or using first available function
-                    available_funcs = [m for m in dir(hub) if callable(getattr(hub, m)) and not m.startswith('_')]
-                    if available_funcs:
-                        print(f"Trying first available function: {available_funcs[0]}")
-                        load_func = getattr(hub, available_funcs[0])
-                        try:
-                            self.model = load_func(device=self.device)
-                        except TypeError:
-                            # Try without device argument
-                            self.model = load_func()
-                    else:
-                        raise RuntimeError(f"No loading function found in sopro.hub. Available: {dir(hub)}")
+                print("Downloading Sopro TTS model...")
+                # Download the model from HuggingFace
+                model_path = hub.snapshot_download(repo_id="Piorosen/sopro", repo_type="model")
+                
+                print(f"Model downloaded to: {model_path}")
+                print("Loading model components...")
+                
+                # Load config
+                cfg_path = os.path.join(model_path, "config.json")
+                with open(cfg_path, 'r') as f:
+                    import json
+                    cfg_dict = json.load(f)
+                cfg = SoproTTSConfig(**cfg_dict)
+                
+                # Load model, tokenizer, and codec
+                model = sopro_model.load_model(model_path, device=self.device)
+                tokenizer_obj = sopro_tokenizer.load_tokenizer(model_path)
+                codec_obj = sopro_codec.load_codec(model_path, device=self.device)
+                
+                # Create SoproTTS instance
+                self.model = SoproTTS(
+                    model=model,
+                    cfg=cfg,
+                    tokenizer=tokenizer_obj,
+                    codec=codec_obj,
+                    device=self.device
+                )
                 
                 print("Sopro TTS model loaded successfully!")
             except Exception as e:
@@ -192,7 +198,7 @@ class SoproLoadReferenceAudio:
         input_dir = folder_paths.get_input_directory()
         files = []
         if os.path.exists(input_dir):
-            files = [f for m in os.listdir(input_dir) 
+            files = [f for f in os.listdir(input_dir)  # FIXED: was 'for m in'
                     if f.endswith(('.wav', '.mp3', '.flac', '.ogg', '.m4a'))]
         
         return {
