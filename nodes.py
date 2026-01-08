@@ -5,7 +5,6 @@ import soundfile as sf
 import numpy as np
 import os
 import folder_paths
-from pathlib import Path
 
 class SoproTTSNode:
     """
@@ -56,16 +55,16 @@ class SoproTTSNode:
     OUTPUT_NODE = False
     
     def load_model(self):
-        """Lazy load the Sopro model"""
+        """Lazy load the Sopro model using from_pretrained"""
         if self.model is None:
             try:
                 print("Loading Sopro TTS model...")
                 
-                # Import and instantiate SoproTTS with minimal args
+                # Import Sopro
                 from sopro import SoproTTS
                 
-                # Initialize model with default settings - it will auto-download
-                self.model = SoproTTS(device=self.device)
+                # Use from_pretrained class method (common pattern for TTS models)
+                self.model = SoproTTS.from_pretrained(device=self.device)
                 
                 print("Sopro TTS model loaded successfully!")
             except Exception as e:
@@ -80,6 +79,7 @@ class SoproTTSNode:
     def preprocess_text(self, text):
         """Clean and preprocess text for better TTS results"""
         text = text.strip()
+        # Convert common symbols to words
         replacements = {
             " + ": " plus ",
             " - ": " minus ",
@@ -119,10 +119,11 @@ class SoproTTSNode:
                 if isinstance(ref_waveform, torch.Tensor):
                     ref_waveform = ref_waveform[0].cpu().numpy()
                 
+                # Convert stereo to mono
                 if ref_waveform.shape[0] > 1:
                     ref_waveform = ref_waveform.mean(axis=0, keepdims=True)
                 
-                # Resample to 24kHz if needed
+                # Resample to 24kHz if needed (Sopro's expected rate)
                 if ref_sample_rate != 24000:
                     ref_waveform_tensor = torch.from_numpy(ref_waveform).float()
                     ref_waveform_tensor = torchaudio.functional.resample(
@@ -132,7 +133,7 @@ class SoproTTSNode:
                 
                 ref_audio_np = ref_waveform.squeeze()
             
-            # Generate speech
+            # Generate speech using infer method
             audio_output = model.infer(
                 text=text,
                 reference_audio=ref_audio_np,
@@ -152,9 +153,10 @@ class SoproTTSNode:
             elif audio_tensor.dim() == 2:
                 audio_tensor = audio_tensor.unsqueeze(0)
             
-            # Normalize audio to [-1, 1]
-            if audio_tensor.abs().max() > 1.0:
-                audio_tensor = audio_tensor / audio_tensor.abs().max()
+            # Normalize audio to [-1, 1] if needed
+            max_val = audio_tensor.abs().max()
+            if max_val > 1.0:
+                audio_tensor = audio_tensor / max_val
             
             return ({
                 "waveform": audio_tensor,
@@ -168,7 +170,7 @@ class SoproTTSNode:
 
 
 class SoproLoadReferenceAudio:
-    """Load reference audio file for voice cloning using soundfile"""
+    """Load reference audio file for voice cloning"""
     
     @classmethod
     def INPUT_TYPES(cls):
@@ -190,7 +192,7 @@ class SoproLoadReferenceAudio:
     CATEGORY = "audio/loading"
     
     def load_audio(self, audio_file):
-        """Load audio file using soundfile (no FFmpeg needed!)"""
+        """Load audio file using soundfile"""
         input_dir = folder_paths.get_input_directory()
         audio_path = os.path.join(input_dir, audio_file)
         
@@ -223,7 +225,7 @@ class SoproLoadReferenceAudio:
 
 
 class SoproSaveAudio:
-    """Save generated audio to file using soundfile"""
+    """Save generated audio to file"""
     
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
