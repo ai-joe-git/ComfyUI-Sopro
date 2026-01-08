@@ -1,0 +1,5 @@
+# requirements.txt
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy>=1.24.0
+git+https://github.com/samuel-vitorino/sopro.git
