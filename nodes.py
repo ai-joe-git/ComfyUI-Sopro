@@ -56,20 +56,16 @@ class SoproTTSNode:
     OUTPUT_NODE = False
     
     def load_model(self):
-        """Lazy load the Sopro model"""
+        """Lazy load the Sopro model using hub.from_pretrained"""
         if self.model is None:
             try:
-                from sopro import SoproTTS
-                print("Loading Sopro TTS model...")
-                self.model = SoproTTS()
+                from sopro import hub
+                print("Loading Sopro TTS model from pretrained...")
+                # Use hub.from_pretrained to load the model properly
+                self.model = hub.from_pretrained(device=self.device)
                 print("Sopro TTS model loaded successfully!")
-            except ImportError:
-                raise ImportError(
-                    "Sopro is not installed. Please install it with: "
-                    "pip install git+https://github.com/samuel-vitorino/sopro.git"
-                )
             except Exception as e:
-                raise RuntimeError(f"Failed to load Sopro model: {str(e)}")
+                raise RuntimeError(f"Failed to load Sopro model: {str(e)}\nMake sure Sopro is installed: pip install git+https://github.com/samuel-vitorino/sopro.git")
         return self.model
     
     def preprocess_text(self, text):
@@ -89,7 +85,7 @@ class SoproTTSNode:
     def generate_speech(self, text, reference_audio=None, speed=1.0, temperature=0.7, seed=0):
         """Generate speech from text using Sopro TTS"""
         
-        # Set seed for reproducibility (clamp to 32-bit int for numpy)
+        # Set seed for reproducibility
         if seed > 0:
             seed = min(seed, 2147483647)
             torch.manual_seed(seed)
