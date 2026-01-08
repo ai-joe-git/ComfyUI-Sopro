@@ -17,7 +17,7 @@ cd ComfyUI/custom_nodes/
 
 2. Clone this repository:
 ```bash
-git clone https://github.com/YOUR_USERNAME/ComfyUI-Sopro.git
+git clone https://github.com/ai-joe-git/ComfyUI-Sopro.git
 cd ComfyUI-Sopro
 ```
 
