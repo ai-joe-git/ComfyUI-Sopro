@@ -44,7 +44,7 @@ class SoproTTSNode:
                 "seed": ("INT", {
                     "default": 0,
                     "min": 0,
-                    "max": 2147483647  # Max 32-bit int for numpy compatibility
+                    "max": 2147483647
                 }),
             }
         }
@@ -59,32 +59,13 @@ class SoproTTSNode:
         """Lazy load the Sopro model"""
         if self.model is None:
             try:
-                # Try multiple possible import patterns
-                try:
-                    from sopro import sopro as Sopro
-                    self.model = Sopro()
-                except (ImportError, AttributeError):
-                    try:
-                        import sopro
-                        self.model = sopro.TTS()
-                    except (ImportError, AttributeError):
-                        try:
-                            from sopro import TTS
-                            self.model = TTS()
-                        except (ImportError, AttributeError):
-                            # Last resort - check what's actually in the module
-                            import sopro
-                            print(f"Available sopro attributes: {dir(sopro)}")
-                            raise ImportError(
-                                "Could not find the correct Sopro class. "
-                                "Available attributes: " + str(dir(sopro))
-                            )
-                
+                from sopro import SoproTTS
+                print("Loading Sopro TTS model...")
+                self.model = SoproTTS()
                 print("Sopro TTS model loaded successfully!")
-            except ImportError as e:
+            except ImportError:
                 raise ImportError(
-                    f"Sopro import failed: {str(e)}\n"
-                    "Please ensure Sopro is installed: "
+                    "Sopro is not installed. Please install it with: "
                     "pip install git+https://github.com/samuel-vitorino/sopro.git"
                 )
             except Exception as e:
@@ -110,7 +91,7 @@ class SoproTTSNode:
         
         # Set seed for reproducibility (clamp to 32-bit int for numpy)
         if seed > 0:
-            seed = min(seed, 2147483647)  # Max 32-bit signed int
+            seed = min(seed, 2147483647)
             torch.manual_seed(seed)
             np.random.seed(seed)
         
@@ -124,9 +105,7 @@ class SoproTTSNode:
             raise ValueError("Text input cannot be empty")
         
         try:
-            # Generate audio - try different method names
-            generate_args = {"text": text, "speed": speed, "temperature": temperature}
-            
+            # Prepare generation arguments
             if reference_audio is not None:
                 # Voice cloning mode
                 ref_waveform = reference_audio['waveform']
@@ -145,19 +124,20 @@ class SoproTTSNode:
                     )
                     ref_waveform = ref_waveform_tensor.numpy()
                 
-                generate_args["reference_audio"] = ref_waveform.squeeze()
-            
-            # Try different possible method names
-            if hasattr(model, 'generate'):
-                audio = model.generate(**generate_args)
-            elif hasattr(model, 'synthesize'):
-                audio = model.synthesize(**generate_args)
-            elif hasattr(model, 'tts'):
-                audio = model.tts(**generate_args)
-            elif hasattr(model, '__call__'):
-                audio = model(**generate_args)
+                # Generate with voice cloning
+                audio = model(
+                    text=text,
+                    reference_audio=ref_waveform.squeeze(),
+                    speed=speed,
+                    temperature=temperature
+                )
             else:
-                raise AttributeError(f"Model has no recognized TTS method. Available methods: {[m for m in dir(model) if not m.startswith('_')]}")
+                # Standard TTS mode
+                audio = model(
+                    text=text,
+                    speed=speed,
+                    temperature=temperature
+                )
             
             # Convert to torch tensor
             if isinstance(audio, np.ndarray):
