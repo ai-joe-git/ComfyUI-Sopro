@@ -135,13 +135,33 @@ class SoproTTSNode:
                 
                 ref_audio_np = ref_waveform.squeeze()
             
-            # Generate speech using infer method
-            audio_output = model.infer(
-                text=text,
-                reference_audio=ref_audio_np,
-                speed=speed,
-                temperature=temperature
-            )
+            # Try different method names (common in TTS models)
+            if hasattr(model, 'generate'):
+                # Most common method name
+                audio_output = model.generate(
+                    text=text,
+                    reference_audio=ref_audio_np,
+                    speed=speed,
+                    temperature=temperature
+                )
+            elif hasattr(model, '__call__'):
+                # Model might be callable directly
+                audio_output = model(
+                    text=text,
+                    reference_audio=ref_audio_np,
+                    speed=speed,
+                    temperature=temperature
+                )
+            elif hasattr(model, 'synthesize'):
+                # Alternative common method
+                audio_output = model.synthesize(
+                    text=text,
+                    reference_audio=ref_audio_np,
+                    speed=speed,
+                    temperature=temperature
+                )
+            else:
+                raise AttributeError(f"Model has no recognized inference method. Available methods: {dir(model)}")
             
             # Convert to torch tensor if needed
             if isinstance(audio_output, np.ndarray):
