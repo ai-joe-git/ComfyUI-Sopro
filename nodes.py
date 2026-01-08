@@ -14,7 +14,7 @@ class SoproTTSNode:
     
     def __init__(self):
         self.model = None
-        self.device = "cpu"  # Sopro runs efficiently on CPU
+        self.device = "cpu"
         
     @classmethod
     def INPUT_TYPES(cls):
@@ -44,7 +44,7 @@ class SoproTTSNode:
                 "seed": ("INT", {
                     "default": 0,
                     "min": 0,
-                    "max": 0xffffffffffffffff
+                    "max": 2147483647  # Max 32-bit int for numpy compatibility
                 }),
             }
         }
@@ -59,13 +59,32 @@ class SoproTTSNode:
         """Lazy load the Sopro model"""
         if self.model is None:
             try:
-                from sopro import Sopro
-                print("Loading Sopro TTS model...")
-                self.model = Sopro()
+                # Try multiple possible import patterns
+                try:
+                    from sopro import sopro as Sopro
+                    self.model = Sopro()
+                except (ImportError, AttributeError):
+                    try:
+                        import sopro
+                        self.model = sopro.TTS()
+                    except (ImportError, AttributeError):
+                        try:
+                            from sopro import TTS
+                            self.model = TTS()
+                        except (ImportError, AttributeError):
+                            # Last resort - check what's actually in the module
+                            import sopro
+                            print(f"Available sopro attributes: {dir(sopro)}")
+                            raise ImportError(
+                                "Could not find the correct Sopro class. "
+                                "Available attributes: " + str(dir(sopro))
+                            )
+                
                 print("Sopro TTS model loaded successfully!")
-            except ImportError:
+            except ImportError as e:
                 raise ImportError(
-                    "Sopro is not installed. Please install it with: "
+                    f"Sopro import failed: {str(e)}\n"
+                    "Please ensure Sopro is installed: "
                     "pip install git+https://github.com/samuel-vitorino/sopro.git"
                 )
             except Exception as e:
@@ -89,8 +108,9 @@ class SoproTTSNode:
     def generate_speech(self, text, reference_audio=None, speed=1.0, temperature=0.7, seed=0):
         """Generate speech from text using Sopro TTS"""
         
-        # Set seed for reproducibility
+        # Set seed for reproducibility (clamp to 32-bit int for numpy)
         if seed > 0:
+            seed = min(seed, 2147483647)  # Max 32-bit signed int
             torch.manual_seed(seed)
             np.random.seed(seed)
         
@@ -104,44 +124,40 @@ class SoproTTSNode:
             raise ValueError("Text input cannot be empty")
         
         try:
-            # Generate audio
+            # Generate audio - try different method names
+            generate_args = {"text": text, "speed": speed, "temperature": temperature}
+            
             if reference_audio is not None:
-                # Voice cloning mode with reference audio
+                # Voice cloning mode
                 ref_waveform = reference_audio['waveform']
                 ref_sample_rate = reference_audio['sample_rate']
                 
-                # Convert to numpy and ensure correct format
                 if isinstance(ref_waveform, torch.Tensor):
                     ref_waveform = ref_waveform[0].cpu().numpy()
                 
-                # Convert to mono if stereo
                 if ref_waveform.shape[0] > 1:
                     ref_waveform = ref_waveform.mean(axis=0, keepdims=True)
                 
-                # Resample if needed (Sopro typically uses 24kHz)
                 if ref_sample_rate != 24000:
                     ref_waveform_tensor = torch.from_numpy(ref_waveform).float()
                     ref_waveform_tensor = torchaudio.functional.resample(
-                        ref_waveform_tensor, 
-                        ref_sample_rate, 
-                        24000
+                        ref_waveform_tensor, ref_sample_rate, 24000
                     )
                     ref_waveform = ref_waveform_tensor.numpy()
                 
-                # Generate with voice cloning
-                audio = model.generate(
-                    text=text,
-                    reference_audio=ref_waveform.squeeze(),
-                    speed=speed,
-                    temperature=temperature
-                )
+                generate_args["reference_audio"] = ref_waveform.squeeze()
+            
+            # Try different possible method names
+            if hasattr(model, 'generate'):
+                audio = model.generate(**generate_args)
+            elif hasattr(model, 'synthesize'):
+                audio = model.synthesize(**generate_args)
+            elif hasattr(model, 'tts'):
+                audio = model.tts(**generate_args)
+            elif hasattr(model, '__call__'):
+                audio = model(**generate_args)
             else:
-                # Standard TTS mode
-                audio = model.generate(
-                    text=text,
-                    speed=speed,
-                    temperature=temperature
-                )
+                raise AttributeError(f"Model has no recognized TTS method. Available methods: {[m for m in dir(model) if not m.startswith('_')]}")
             
             # Convert to torch tensor
             if isinstance(audio, np.ndarray):
@@ -159,7 +175,6 @@ class SoproTTSNode:
             if audio_tensor.abs().max() > 1.0:
                 audio_tensor = audio_tensor / audio_tensor.abs().max()
             
-            # Return in ComfyUI audio format
             return ({
                 "waveform": audio_tensor,
                 "sample_rate": 24000
@@ -182,7 +197,7 @@ class SoproLoadReferenceAudio:
         
         return {
             "required": {
-                "audio_file": (sorted(files),),
+                "audio_file": (sorted(files) if files else ["No audio files found"],),
             }
         }
     
@@ -192,7 +207,7 @@ class SoproLoadReferenceAudio:
     CATEGORY = "audio/loading"
     
     def load_audio(self, audio_file):
-        """Load audio file using soundfile (recommended by Sopro creator)"""
+        """Load audio file using soundfile (no FFmpeg needed!)"""
         input_dir = folder_paths.get_input_directory()
         audio_path = os.path.join(input_dir, audio_file)
         
@@ -200,7 +215,7 @@ class SoproLoadReferenceAudio:
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
         
         try:
-            # Load audio with soundfile (no FFmpeg needed!)
+            # Load audio with soundfile
             data, sample_rate = sf.read(audio_path, dtype='float32')
             
             # Convert to torch tensor
@@ -208,13 +223,11 @@ class SoproLoadReferenceAudio:
             
             # Ensure correct shape: (channels, samples)
             if waveform.dim() == 1:
-                # Mono: (samples,) -> (1, samples)
                 waveform = waveform.unsqueeze(0)
             else:
-                # Stereo: (samples, channels) -> (channels, samples)
                 waveform = waveform.T
             
-            # Add batch dimension: (channels, samples) -> (1, channels, samples)
+            # Add batch dimension
             waveform = waveform.unsqueeze(0)
             
             return ({
@@ -255,11 +268,11 @@ class SoproSaveAudio:
         waveform = audio['waveform']
         sample_rate = audio['sample_rate']
         
-        # Remove batch dimension for saving
+        # Remove batch dimension
         if waveform.dim() == 3:
             waveform = waveform[0]
         
-        # Convert to numpy and transpose to (samples, channels) for soundfile
+        # Convert to numpy and transpose
         audio_numpy = waveform.cpu().numpy().T
         
         # Generate unique filename
@@ -272,7 +285,6 @@ class SoproSaveAudio:
             counter += 1
         
         try:
-            # Save audio with soundfile (no FFmpeg needed!)
             sf.write(filepath, audio_numpy, sample_rate)
             print(f"Audio saved to: {filepath}")
             
