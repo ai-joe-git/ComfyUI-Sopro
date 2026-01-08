@@ -1,6 +1,7 @@
 # nodes.py
 import torch
 import torchaudio
+import soundfile as sf
 import numpy as np
 import os
 import folder_paths
@@ -73,9 +74,7 @@ class SoproTTSNode:
     
     def preprocess_text(self, text):
         """Clean and preprocess text for better TTS results"""
-        # Convert numbers and symbols to words as recommended
         text = text.strip()
-        # Add basic preprocessing
         replacements = {
             " + ": " plus ",
             " - ": " minus ",
@@ -113,7 +112,6 @@ class SoproTTSNode:
                 
                 # Convert to numpy and ensure correct format
                 if isinstance(ref_waveform, torch.Tensor):
-                    # ComfyUI format: (batch, channels, samples)
                     ref_waveform = ref_waveform[0].cpu().numpy()
                 
                 # Convert to mono if stereo
@@ -153,10 +151,8 @@ class SoproTTSNode:
             
             # Ensure correct shape: (batch, channels, samples)
             if audio_tensor.dim() == 1:
-                # (samples,) -> (1, 1, samples)
                 audio_tensor = audio_tensor.unsqueeze(0).unsqueeze(0)
             elif audio_tensor.dim() == 2:
-                # (channels, samples) -> (1, channels, samples)
                 audio_tensor = audio_tensor.unsqueeze(0)
             
             # Normalize audio to [-1, 1]
@@ -174,7 +170,7 @@ class SoproTTSNode:
 
 
 class SoproLoadReferenceAudio:
-    """Load reference audio file for voice cloning"""
+    """Load reference audio file for voice cloning using soundfile"""
     
     @classmethod
     def INPUT_TYPES(cls):
@@ -196,7 +192,7 @@ class SoproLoadReferenceAudio:
     CATEGORY = "audio/loading"
     
     def load_audio(self, audio_file):
-        """Load audio file and return in ComfyUI format"""
+        """Load audio file using soundfile (recommended by Sopro creator)"""
         input_dir = folder_paths.get_input_directory()
         audio_path = os.path.join(input_dir, audio_file)
         
@@ -204,12 +200,22 @@ class SoproLoadReferenceAudio:
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
         
         try:
-            # Load audio with torchaudio
-            waveform, sample_rate = torchaudio.load(audio_path)
+            # Load audio with soundfile (no FFmpeg needed!)
+            data, sample_rate = sf.read(audio_path, dtype='float32')
             
-            # Ensure batch dimension: (channels, samples) -> (1, channels, samples)
-            if waveform.dim() == 2:
+            # Convert to torch tensor
+            waveform = torch.from_numpy(data).float()
+            
+            # Ensure correct shape: (channels, samples)
+            if waveform.dim() == 1:
+                # Mono: (samples,) -> (1, samples)
                 waveform = waveform.unsqueeze(0)
+            else:
+                # Stereo: (samples, channels) -> (channels, samples)
+                waveform = waveform.T
+            
+            # Add batch dimension: (channels, samples) -> (1, channels, samples)
+            waveform = waveform.unsqueeze(0)
             
             return ({
                 "waveform": waveform,
@@ -221,7 +227,7 @@ class SoproLoadReferenceAudio:
 
 
 class SoproSaveAudio:
-    """Save generated audio to file"""
+    """Save generated audio to file using soundfile"""
     
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
@@ -234,7 +240,7 @@ class SoproSaveAudio:
                 "filename_prefix": ("STRING", {"default": "sopro_audio"}),
             },
             "optional": {
-                "format": (["wav", "mp3", "flac"],),
+                "format": (["wav", "flac", "ogg"],),
             }
         }
     
@@ -244,7 +250,7 @@ class SoproSaveAudio:
     CATEGORY = "audio/output"
     
     def save_audio(self, audio, filename_prefix="sopro_audio", format="wav"):
-        """Save audio to file"""
+        """Save audio to file using soundfile"""
         
         waveform = audio['waveform']
         sample_rate = audio['sample_rate']
@@ -252,6 +258,9 @@ class SoproSaveAudio:
         # Remove batch dimension for saving
         if waveform.dim() == 3:
             waveform = waveform[0]
+        
+        # Convert to numpy and transpose to (samples, channels) for soundfile
+        audio_numpy = waveform.cpu().numpy().T
         
         # Generate unique filename
         counter = 0
@@ -263,8 +272,8 @@ class SoproSaveAudio:
             counter += 1
         
         try:
-            # Save audio
-            torchaudio.save(filepath, waveform.cpu(), sample_rate)
+            # Save audio with soundfile (no FFmpeg needed!)
+            sf.write(filepath, audio_numpy, sample_rate)
             print(f"Audio saved to: {filepath}")
             
             return {"ui": {"audio": [filename]}}
