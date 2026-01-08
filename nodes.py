@@ -62,9 +62,12 @@ class SoproTTSNode:
                 from sopro import hub, SoproTTS, model as sopro_model, tokenizer as sopro_tokenizer, codec as sopro_codec
                 from sopro.config import SoproTTSConfig
                 
-                print("Downloading Sopro TTS model...")
-                # Download the model from HuggingFace
-                model_path = hub.snapshot_download(repo_id="Piorosen/sopro", repo_type="model")
+                print("Downloading Sopro TTS model from HuggingFace...")
+                # Download the model from HuggingFace - CORRECT REPO!
+                model_path = hub.snapshot_download(
+                    repo_id="samuel-vitorino/sopro",  # FIXED: correct repo ID
+                    repo_type="model"
+                )
                 
                 print(f"Model downloaded to: {model_path}")
                 print("Loading model components...")
